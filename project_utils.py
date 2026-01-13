@@ -7,9 +7,10 @@ from sklearn.metrics import (
     average_precision_score,
     confusion_matrix,
     accuracy_score,
+    f1_score,
 )
 import json
-import tqdm
+from tqdm import tqdm
 
 
 def connect_with_database(user, password, database):
@@ -128,7 +129,7 @@ def save_model_results(
         params,
         metrics["recall"],
         metrics["pr_auc"],
-        metrics["pr_auc_baseline"],
+        metrics["f1_score"],
         metrics["accuracy"],
         metrics["tn"],
         metrics["fp"],
@@ -140,7 +141,7 @@ def save_model_results(
     )
 
     query = """INSERT INTO MODEL_RESULT
-            (Model_name, Params, Recall, Pr_auc, Pr_auc_baseline, Accuracy, True_neg, False_pos, 
+            (Model_name, Params, Recall, Pr_auc, f1_score, Accuracy, True_neg, False_pos, 
             False_neg, True_pos, Dropped_columns, Train_size, Threshold) 
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
 
@@ -174,8 +175,6 @@ def run_random_forest(cur, trainset_whole, testset, config, thresholds, seed):
         axis=1,
     )
 
-    pr_auc_baseline = y_test.sum() / len(y_test)
-
     param_grid = {
         "n_estimators": [50, 100, 200, 500],  # number of trees
         "max_depth": [5, 10, 20, None],  # maximum number of levels in tree
@@ -192,7 +191,7 @@ def run_random_forest(cur, trainset_whole, testset, config, thresholds, seed):
     grid = list(ParameterGrid(param_grid))
 
     for params in tqdm(grid, desc="-> Params", leave=False):
-        model = RandomForestClassifier(**params)
+        model = RandomForestClassifier(**params, n_jobs=-1)
         model.fit(X_train, y_train)
 
         stroke_probabilities = model.predict_proba(X_test)[:, 1]
@@ -209,7 +208,7 @@ def run_random_forest(cur, trainset_whole, testset, config, thresholds, seed):
                 "pr_auc": average_precision_score(
                     y_test, stroke_probabilities
                 ),  # threshold independent, tells how good the model is at finding strokes while avoiding false alarms
-                "pr_auc_baseline": pr_auc_baseline,
+                "f1_score": f1_score(y_test, y_pred),
                 "accuracy": accuracy_score(y_test, y_pred),
                 "tn": int(tn),
                 "fp": int(fp),

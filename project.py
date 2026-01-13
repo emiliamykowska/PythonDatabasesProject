@@ -7,7 +7,7 @@ from project_utils import (
     load_data_from_database,
     run_random_forest,
 )
-import tqdm
+from tqdm import tqdm
 
 cnx = connect_with_database("project_adm", "sTroke123", "stroke_project")
 cur = cnx.cursor()
@@ -22,7 +22,7 @@ testset = load_data_from_database("PREPROCESSED_DATA_TEST", cnx)
 # DATA CONFIGURATION
 seed = 17
 experiment_cfg = {
-    "no_stroke_counts": [250, 500, 1000, 2000, None],
+    "no_stroke_counts": [200, 500, 1000, 2000, None],
     "columns_to_drop": [
         [],  # No columns dropped
         ["Ever_married", "Work_type_children"],

@@ -8,9 +8,12 @@ from sklearn.metrics import (
     confusion_matrix,
     accuracy_score,
     f1_score,
+    fbeta_score,
 )
+from xgboost import XGBClassifier
 import json
 from tqdm import tqdm
+from deep_model import DeepModelClassifier
 
 
 def connect_with_database(user, password, database):
@@ -108,17 +111,15 @@ def save_model_results(
     # params: dict of hyperparameters
     # metrics: dict (recall, pr_auc, tn, fp, fn, tp)
     cur.execute("""CREATE TABLE IF NOT EXISTS MODEL_RESULT (
-                Id INT AUTO_INCREMENT PRIMARY KEY,
+                Model_id INT AUTO_INCREMENT PRIMARY KEY,
                 Model_name VARCHAR(50),
-                Params TEXT,
+                Params JSON,
                 Recall FLOAT,
                 Pr_auc FLOAT,
-                Pr_auc_baseline FLOAT,
+                F1_Score FLOAT,
+                F_beta_score FLOAT,
                 Accuracy FLOAT,
-                True_neg INT,
-                False_pos INT,
-                False_neg INT,
-                True_pos INT,
+                Confusion_matrix JSON,
                 Dropped_columns TEXT,
                 Train_size INT,
                 Threshold FLOAT
@@ -130,20 +131,17 @@ def save_model_results(
         metrics["recall"],
         metrics["pr_auc"],
         metrics["f1_score"],
+        metrics["f_beta_score"],
         metrics["accuracy"],
-        metrics["tn"],
-        metrics["fp"],
-        metrics["fn"],
-        metrics["tp"],
+        metrics["confusion_matrix"],
         ",".join(dropped_cols),
         train_size,
         threshold,
     )
 
     query = """INSERT INTO MODEL_RESULT
-            (Model_name, Params, Recall, Pr_auc, f1_score, Accuracy, True_neg, False_pos, 
-            False_neg, True_pos, Dropped_columns, Train_size, Threshold) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+            (Model_name, Params, Recall, Pr_auc, F1_score, F_beta_score, Accuracy, Confusion_matrix, Dropped_columns, Train_size, Threshold) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
 
     cur.execute(query, values)
 
@@ -162,7 +160,9 @@ def drop_no_stroke_patients(trainset, number_of_patients, seed):
     return pd.concat([no_stroke_sampled, stroke_df], axis=0)
 
 
-def run_random_forest(cur, trainset_whole, testset, config, thresholds, seed):
+def run_model(
+    cur, model_name, param_grid, trainset_whole, testset, config, thresholds, seed
+):
     trainset = drop_no_stroke_patients(trainset_whole, config["no_stroke_counts"], seed)
     y_train = trainset["Stroke"]
     X_train = trainset.drop(
@@ -174,51 +174,47 @@ def run_random_forest(cur, trainset_whole, testset, config, thresholds, seed):
         ["Id", "Stroke"] + config["dropped_cols"],
         axis=1,
     )
-
-    param_grid = {
-        "n_estimators": [50, 100, 200, 500],  # number of trees
-        "max_depth": [5, 10, 20, None],  # maximum number of levels in tree
-        "min_samples_leaf": [1, 2, 4],  # samples required at each leaf
-        "min_samples_split": [2, 4, 6],  # samples required to split the node
-        "max_features": [
-            "sqrt",
-            "log2",
-        ],  # number of features to consider at every split
-        "random_state": [seed],
-        "class_weight": ["balanced"],
-    }
-
     grid = list(ParameterGrid(param_grid))
 
-    for params in tqdm(grid, desc="-> Params", leave=False):
-        model = RandomForestClassifier(**params, n_jobs=-1)
+    for params in tqdm(grid, desc="   Params", leave=False):
+        if model_name == "RandomForestClassifier":
+            model = RandomForestClassifier(**params, n_jobs=-1)
+        elif model_name == "XGBClassifier":
+            model = XGBClassifier(**params, n_jobs=-1, tree_method="gpu_hist", gpu_id=0)
+        elif model_name == "DeepModelClassifier":
+            params["in_features"] = len(X_train.columns)
+            model = DeepModelClassifier(**params)
+
         model.fit(X_train, y_train)
 
-        stroke_probabilities = model.predict_proba(X_test)[:, 1]
+        if model_name == "DeepModelClassifier":
+            stroke_probabilities = model.predict_proba(X_test, y_test)
+        elif model_name == "RandomForestClassifier" or model_name == "XGBClassifier":
+            stroke_probabilities = model.predict_proba(X_test)[:, 1]
+
+        pr_auc = average_precision_score(y_test, stroke_probabilities)
 
         for threshold in thresholds:
             y_pred = (stroke_probabilities >= threshold).astype(int)
 
-            tn, fp, fn, tp = confusion_matrix(y_test, y_pred).ravel().tolist()
+            tn, fp, fn, tp = (
+                confusion_matrix(y_test, y_pred, labels=[0, 1]).ravel().tolist()
+            )
 
             metrics = {
                 "recall": recall_score(
                     y_test, y_pred
                 ),  # how many with stroke were caught
-                "pr_auc": average_precision_score(
-                    y_test, stroke_probabilities
-                ),  # threshold independent, tells how good the model is at finding strokes while avoiding false alarms
+                "pr_auc": pr_auc,  # threshold independent, tells how good the model is at finding strokes while avoiding false alarms
                 "f1_score": f1_score(y_test, y_pred),
+                "f_beta_score": fbeta_score(y_test, y_pred, beta=2, average="binary"),
                 "accuracy": accuracy_score(y_test, y_pred),
-                "tn": int(tn),
-                "fp": int(fp),
-                "fn": int(fn),
-                "tp": int(tp),
+                "confusion_matrix": {"tn": tn, "fp": fp, "fn": fn, "tp": tp},
             }
 
             save_model_results(
                 cur,
-                "RandomForest",
+                model_name,
                 params=json.dumps(params),
                 metrics=metrics,
                 dropped_cols=config["dropped_cols"],

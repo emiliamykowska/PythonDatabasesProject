@@ -13,7 +13,6 @@ from sklearn.metrics import (
 from xgboost import XGBClassifier
 from tqdm import tqdm
 from deep_model import DeepModelClassifier
-import pymongo
 
 
 def connect_with_database(user, password, database):

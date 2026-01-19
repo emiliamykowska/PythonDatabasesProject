@@ -1,6 +1,5 @@
 import pandas as pd
 import itertools
-import mysql.connector
 from project_utils import (
     connect_with_database,
     save_data_to_database,

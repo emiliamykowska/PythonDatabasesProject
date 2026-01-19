@@ -8,6 +8,7 @@ from project_utils import (
     run_model,
 )
 from tqdm import tqdm
+import pymongo
 
 cnx = connect_with_database("project_adm", "sTroke123", "stroke_project")
 cur = cnx.cursor()
@@ -19,6 +20,10 @@ cnx.commit()
 trainset_whole = load_data_from_database("PREPROCESSED_DATA_TRAIN", cnx)
 testset = load_data_from_database("PREPROCESSED_DATA_TEST", cnx)
 
+client = pymongo.MongoClient("localhost", 27017)
+db = client["stroke_project_experiments"]
+collection = db["model_result"]
+
 # DATA CONFIGURATION
 seed = 17
 experiment_cfg = {
@@ -26,7 +31,6 @@ experiment_cfg = {
     "columns_to_drop": [
         [],  # No columns dropped
         ["Ever_married", "Work_type_children"],
-        ["Ever_married", "Work_type_children", "Bmi"],
         ["Ever_married", "Work_type_children", "Bmi", "Residence_type"],
         [
             "Ever_married",
@@ -35,16 +39,6 @@ experiment_cfg = {
             "Work_type_Private",
             "Work_type_Govt_job",
             "Work_type_Self-employed",
-        ],
-        [
-            "Ever_married",
-            "Work_type_children",
-            "Work_type_Never_worked",
-            "Work_type_Private",
-            "Work_type_Govt_job",
-            "Work_type_Self-employed",
-            "Bmi",
-            "Residence_type",
         ],
         [
             "Ever_married",
@@ -95,11 +89,10 @@ param_grid_xgb = {
 }
 
 param_grid_dmc = {
-    "epochs": [15, 30, 50, 100],
-    "batch_size": [32, 64],
-    "in_features": len(trainset_whole.columns),
-    "hidden_layer": [64, 128],
-    "hidden_layer2": [128, 256],
+    "epochs": [15, 40, 70],
+    "batch_size": [64],
+    "hidden_layer": [128],
+    "hidden_layer2": [64, 256],
     "dropout": [0, 0.2],
 }
 
@@ -120,7 +113,6 @@ for no_stroke_no, dropped in tqdm(combinations, desc="ExperimentsRT"):
         experiment_cfg["thresholds"],
         seed,
     )
-    cnx.commit()
 
 combinations = itertools.product(
     experiment_cfg["no_stroke_counts"], experiment_cfg["columns_to_drop"]
@@ -138,7 +130,6 @@ for no_stroke_no, dropped in tqdm(combinations, desc="ExperimentsXGB"):
         experiment_cfg["thresholds"],
         seed,
     )
-    cnx.commit()
 
 combinations = itertools.product(
     experiment_cfg["no_stroke_counts"], experiment_cfg["columns_to_drop"]

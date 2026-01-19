@@ -117,9 +117,9 @@ class DeepModelClassifier:
                 inputs, labels = inputs.to(device), labels.to(device)
 
                 outputs = self.net(inputs)
-                predictions.extend(torch.sigmoid(outputs).cpu().numpy())
+                predictions.append(torch.sigmoid(outputs).cpu().numpy())
 
-        return np.array(predictions).ravel()
+        return np.concatenate(predictions, axis=0).ravel()
 
 
 class Net(nn.Module):

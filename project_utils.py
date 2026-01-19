@@ -11,9 +11,9 @@ from sklearn.metrics import (
     fbeta_score,
 )
 from xgboost import XGBClassifier
-import json
 from tqdm import tqdm
 from deep_model import DeepModelClassifier
+import pymongo
 
 
 def connect_with_database(user, password, database):
@@ -106,44 +106,54 @@ def scale_data(scaler, X, is_train, numerical_columns):
 
 
 def save_model_results(
-    cur, model_name, params, metrics, dropped_cols, train_size, threshold
+    collection, model_name, params, metrics, dropped_cols, train_size, threshold
 ):
+    model_dict = {
+        "model_name": model_name,
+        "params": params,
+        "metrics": metrics,
+        "dropped_columns": dropped_cols,
+        "train_size": train_size,
+        "threshold": threshold,
+    }
+
+    collection.insert_one(model_dict)
     # params: dict of hyperparameters
     # metrics: dict (recall, pr_auc, tn, fp, fn, tp)
-    cur.execute("""CREATE TABLE IF NOT EXISTS MODEL_RESULT (
-                Model_id INT AUTO_INCREMENT PRIMARY KEY,
-                Model_name VARCHAR(50),
-                Params JSON,
-                Recall FLOAT,
-                Pr_auc FLOAT,
-                F1_Score FLOAT,
-                F_beta_score FLOAT,
-                Accuracy FLOAT,
-                Confusion_matrix JSON,
-                Dropped_columns TEXT,
-                Train_size INT,
-                Threshold FLOAT
-                )""")
+    # cur.execute("""CREATE TABLE IF NOT EXISTS MODEL_RESULT (
+    #             Model_id INT AUTO_INCREMENT PRIMARY KEY,
+    #             Model_name VARCHAR(50),
+    #             Params JSON,
+    #             Recall FLOAT,
+    #             Pr_auc FLOAT,
+    #             F1_Score FLOAT,
+    #             F_beta_score FLOAT,
+    #             Accuracy FLOAT,
+    #             Confusion_matrix JSON,
+    #             Dropped_columns TEXT,
+    #             Train_size INT,
+    #             Threshold FLOAT
+    #             )""")
 
-    values = (
-        model_name,
-        params,
-        metrics["recall"],
-        metrics["pr_auc"],
-        metrics["f1_score"],
-        metrics["f_beta_score"],
-        metrics["accuracy"],
-        metrics["confusion_matrix"],
-        ",".join(dropped_cols),
-        train_size,
-        threshold,
-    )
+    # values = (
+    #     model_name,
+    #     params,
+    #     metrics["recall"],
+    #     metrics["pr_auc"],
+    #     metrics["f1_score"],
+    #     metrics["f_beta_score"],
+    #     metrics["accuracy"],
+    #     metrics["confusion_matrix"],
+    #     ",".join(dropped_cols),
+    #     train_size,
+    #     threshold,
+    # )
 
-    query = """INSERT INTO MODEL_RESULT
-            (Model_name, Params, Recall, Pr_auc, F1_score, F_beta_score, Accuracy, Confusion_matrix, Dropped_columns, Train_size, Threshold) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+    # query = """INSERT INTO MODEL_RESULT
+    #         (Model_name, Params, Recall, Pr_auc, F1_score, F_beta_score, Accuracy, Confusion_matrix, Dropped_columns, Train_size, Threshold)
+    #         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
 
-    cur.execute(query, values)
+    # cur.execute(query, values)
 
 
 def drop_no_stroke_patients(trainset, number_of_patients, seed):
@@ -161,7 +171,14 @@ def drop_no_stroke_patients(trainset, number_of_patients, seed):
 
 
 def run_model(
-    cur, model_name, param_grid, trainset_whole, testset, config, thresholds, seed
+    collection,
+    model_name,
+    param_grid,
+    trainset_whole,
+    testset,
+    config,
+    thresholds,
+    seed,
 ):
     trainset = drop_no_stroke_patients(trainset_whole, config["no_stroke_counts"], seed)
     y_train = trainset["Stroke"]
@@ -180,7 +197,9 @@ def run_model(
         if model_name == "RandomForestClassifier":
             model = RandomForestClassifier(**params, n_jobs=-1)
         elif model_name == "XGBClassifier":
-            model = XGBClassifier(**params, n_jobs=-1, tree_method="gpu_hist", gpu_id=0)
+            model = XGBClassifier(
+                **params, n_jobs=-1, tree_method="hist", device="cuda"
+            )
         elif model_name == "DeepModelClassifier":
             params["in_features"] = len(X_train.columns)
             model = DeepModelClassifier(**params)
@@ -189,6 +208,7 @@ def run_model(
 
         if model_name == "DeepModelClassifier":
             stroke_probabilities = model.predict_proba(X_test, y_test)
+
         elif model_name == "RandomForestClassifier" or model_name == "XGBClassifier":
             stroke_probabilities = model.predict_proba(X_test)[:, 1]
 
@@ -213,9 +233,9 @@ def run_model(
             }
 
             save_model_results(
-                cur,
+                collection,
                 model_name,
-                params=json.dumps(params),
+                params=params,
                 metrics=metrics,
                 dropped_cols=config["dropped_cols"],
                 train_size=len(trainset),

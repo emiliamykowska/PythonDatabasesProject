@@ -1,7 +1,7 @@
 import pandas as pd
 import itertools
 from project_utils import (
-    connect_with_sql,
+    connect_to_sql,
     save_data_to_sql,
     load_data_from_sql,
     run_model,
@@ -9,7 +9,7 @@ from project_utils import (
 )
 from tqdm import tqdm
 
-cnx = connect_with_sql("project_adm", "sTroke123", "stroke_project")
+cnx = connect_to_sql("project_adm", "sTroke123", "stroke_project")
 cur = cnx.cursor()
 data = pd.read_csv("healthcare-dataset-stroke-data.csv")
 print(data.dtypes)
@@ -21,7 +21,9 @@ trainset_whole = load_data_from_sql("PREPROCESSED_DATA_TRAIN", cnx)
 testset = load_data_from_sql("PREPROCESSED_DATA_TEST", cnx)
 
 collection = connect_to_mongo(
-    "localhost", 27017, "stroke_project_experiments", "model_result"
+    "mongodb://root:example@localhost:27017",
+    "stroke_project_experiments",
+    "model_result",
 )
 
 # DATA CONFIGURATION

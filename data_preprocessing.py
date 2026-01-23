@@ -4,17 +4,17 @@ from sklearn.model_selection import train_test_split
 from project_utils import (
     encode_data,
     scale_data,
-    save_data_to_database,
-    connect_with_database,
-    load_data_from_database,
+    save_data_to_sql,
+    connect_with_sql,
+    load_data_from_sql,
 )
 
-cnx = connect_with_database("project_adm", "sTroke123", "stroke_project")
+cnx = connect_with_sql("project_adm", "sTroke123", "stroke_project")
 cur = cnx.cursor()
 
 seed = 17
 
-data = load_data_from_database("UNPROCESSED_DATA", cnx)
+data = load_data_from_sql("UNPROCESSED_DATA", cnx)
 data["Ever_married"] = data["Ever_married"].map({"Yes": 1, "No": 0})
 data["Residence_type"] = data["Residence_type"].map({"Urban": 1, "Rural": 0})
 data["Gender"] = data["Gender"].map({"Female": 1, "Male": 0})
@@ -55,11 +55,9 @@ test_final = scale_data(
     scaler, test_encoded, is_train=False, numerical_columns=numerical_columns
 )
 
-save_data_to_database(
+save_data_to_sql(
     cur, pd.concat([train_final, y_train], axis=1), "PREPROCESSED_DATA_TRAIN"
 )
-save_data_to_database(
-    cur, pd.concat([test_final, y_test], axis=1), "PREPROCESSED_DATA_TEST"
-)
+save_data_to_sql(cur, pd.concat([test_final, y_test], axis=1), "PREPROCESSED_DATA_TEST")
 
 cnx.commit()

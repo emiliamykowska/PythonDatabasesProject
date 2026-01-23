@@ -6,6 +6,8 @@ from tqdm import tqdm
 from torch.utils.data import Dataset
 import numpy as np
 
+from project_utils import set_seed
+
 
 class StrokeDataset(Dataset):
     def __init__(self, X_set, y_set):
@@ -30,6 +32,8 @@ class DeepModelClassifier:
         hidden_layer,
         hidden_layer2,
         dropout,
+        focal_alpha,
+        seed,
     ):
         self.epochs = epochs
         self.batch_size = batch_size
@@ -37,24 +41,21 @@ class DeepModelClassifier:
         self.hidden_layer = hidden_layer
         self.hidden_layer2 = hidden_layer2
         self.dropout = dropout
+        self.focal_alpha = focal_alpha
+        self.seed = seed
 
     def fit(self, X_train, y_train):
+        set_seed(self.seed)
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         trainset = StrokeDataset(X_train, y_train)
-        # testset = torch.from_numpy(testset.values.astype(np.float32))
         train_loader = torch.utils.data.DataLoader(
             trainset, shuffle=True, batch_size=self.batch_size, num_workers=4
         )
-        # test_loader = torch.utils.data.DataLoader(
-        #     testset, shuffle=False, batch_size=self.batch_size, num_workers=4
-        # )
         self.net = Net(
             self.in_features, self.hidden_layer, self.hidden_layer2, self.dropout
         ).to(device)
-        criterion = FocalLoss()
+        criterion = FocalLoss(alpha=self.focal_alpha)
         optimizer = optim.Adam(self.net.parameters(), lr=1e-3)
-
-        # best_f2 = 0
 
         for epoch in tqdm(range(self.epochs)):
             running_loss = 0.0
@@ -72,38 +73,8 @@ class DeepModelClassifier:
 
                 running_loss += loss.item()
 
-        # torch.save(self.net.state_dict(), "stroke_model.pth")
-
-        # net.eval()
-
-        # y_pred = []
-        # y_true = []
-
-        # with torch.no_grad():
-        #     for data in test_loader:
-        #         inputs, labels = data[0].to(device), data[1].to(device)
-        #         predictions = net(inputs)
-        #         outputs = torch.sigmoid(predictions)
-        #         predicted = (outputs >= self.threshold).float()
-
-        #         y_pred.extend(predicted)
-        #         y_true.extend(labels)
-
-        # f2 = fbeta_score(y_true, y_pred, beta=2, average="binary")
-
-        # if f2 > best_f2:
-        #     best_f2 = f2
-        #     torch.save(net.state_dict(), "stroke_model.pth")
-
     def predict_proba(self, X_test, y_test):
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        # net = Net(
-        #     self.in_features,
-        #     self.hidden_layer,
-        #     self.hidden_layer2,
-        #     self.dropout,
-        # ).to(device)
-        # net.load_state_dict(torch.load("stroke_model.pth"))
         self.net.eval()
         testset = StrokeDataset(X_test, y_test)
         test_loader = torch.utils.data.DataLoader(

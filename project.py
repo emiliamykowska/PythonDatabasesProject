@@ -1,27 +1,28 @@
 import pandas as pd
 import itertools
 from project_utils import (
-    connect_with_database,
-    save_data_to_database,
-    load_data_from_database,
+    connect_with_sql,
+    save_data_to_sql,
+    load_data_from_sql,
     run_model,
+    connect_to_mongo,
 )
 from tqdm import tqdm
-import pymongo
 
-cnx = connect_with_database("project_adm", "sTroke123", "stroke_project")
+cnx = connect_with_sql("project_adm", "sTroke123", "stroke_project")
 cur = cnx.cursor()
 data = pd.read_csv("healthcare-dataset-stroke-data.csv")
+print(data.dtypes)
 
-save_data_to_database(cur, data, "UNPROCESSED_DATA")
+save_data_to_sql(cur, data, "UNPROCESSED_DATA")
 cnx.commit()
 
-trainset_whole = load_data_from_database("PREPROCESSED_DATA_TRAIN", cnx)
-testset = load_data_from_database("PREPROCESSED_DATA_TEST", cnx)
+trainset_whole = load_data_from_sql("PREPROCESSED_DATA_TRAIN", cnx)
+testset = load_data_from_sql("PREPROCESSED_DATA_TEST", cnx)
 
-client = pymongo.MongoClient("localhost", 27017)
-db = client["stroke_project_experiments"]
-collection = db["model_result"]
+collection = connect_to_mongo(
+    "localhost", 27017, "stroke_project_experiments", "model_result"
+)
 
 # DATA CONFIGURATION
 seed = 17
@@ -89,10 +90,12 @@ param_grid_xgb = {
 
 param_grid_dmc = {
     "epochs": [15, 40, 70],
-    "batch_size": [64],
+    "batch_size": [32, 64],
     "hidden_layer": [128],
     "hidden_layer2": [64, 256],
     "dropout": [0, 0.2],
+    "focal_alpha": [0.75, 0.95],
+    "seed": seed,
 }
 
 combinations = itertools.product(
@@ -103,7 +106,7 @@ combinations = itertools.product(
 for no_stroke_no, dropped in tqdm(combinations, desc="ExperimentsRT"):
     current_config = {"no_stroke_counts": no_stroke_no, "dropped_cols": dropped}
     run_model(
-        cur,
+        collection,
         "RandomForestClassifier",
         param_grid_rf,
         trainset_whole,
@@ -120,7 +123,7 @@ combinations = itertools.product(
 for no_stroke_no, dropped in tqdm(combinations, desc="ExperimentsXGB"):
     current_config = {"no_stroke_counts": no_stroke_no, "dropped_cols": dropped}
     run_model(
-        cur,
+        collection,
         "XGBClassifier",
         param_grid_xgb,
         trainset_whole,
@@ -137,7 +140,7 @@ combinations = itertools.product(
 for no_stroke_no, dropped in tqdm(combinations, desc="ExperimentsDMC"):
     current_config = {"no_stroke_counts": no_stroke_no, "dropped_cols": dropped}
     run_model(
-        cur,
+        collection,
         "DeepModelClassifier",
         param_grid_dmc,
         trainset_whole,

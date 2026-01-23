@@ -13,9 +13,13 @@ from sklearn.metrics import (
 from xgboost import XGBClassifier
 from tqdm import tqdm
 from deep_model import DeepModelClassifier
+import pymongo
+import random
+import numpy as np
+import torch
 
 
-def connect_with_database(user, password, database):
+def connect_to_sql(user, password, database):
     """
     Connect to a SQL database using the provided username, password, and database name.
 
@@ -37,7 +41,15 @@ def connect_with_database(user, password, database):
     return cnx
 
 
-def save_data_to_database(cur, data, table_name):
+def connect_to_mongo(url, database_name, collection):
+    client = pymongo.MongoClient(url)
+    db = client[database_name]
+    collection = db[collection]
+
+    return collection
+
+
+def save_data_to_sql(cur, data, table_name):
     type_map = {"int64": "INTEGER", "float64": "FLOAT", "object": "VARCHAR(50)"}
 
     columns_types = []
@@ -71,7 +83,7 @@ def save_data_to_database(cur, data, table_name):
     cur.executemany(insert, rows_to_execute)
 
 
-def load_data_from_database(table_name, cnx):
+def load_data_from_sql(table_name, cnx):
     return pd.read_sql_query(f"SELECT * FROM {table_name}", cnx)
 
 
@@ -117,42 +129,6 @@ def save_model_results(
     }
 
     collection.insert_one(model_dict)
-    # params: dict of hyperparameters
-    # metrics: dict (recall, pr_auc, tn, fp, fn, tp)
-    # cur.execute("""CREATE TABLE IF NOT EXISTS MODEL_RESULT (
-    #             Model_id INT AUTO_INCREMENT PRIMARY KEY,
-    #             Model_name VARCHAR(50),
-    #             Params JSON,
-    #             Recall FLOAT,
-    #             Pr_auc FLOAT,
-    #             F1_Score FLOAT,
-    #             F_beta_score FLOAT,
-    #             Accuracy FLOAT,
-    #             Confusion_matrix JSON,
-    #             Dropped_columns TEXT,
-    #             Train_size INT,
-    #             Threshold FLOAT
-    #             )""")
-
-    # values = (
-    #     model_name,
-    #     params,
-    #     metrics["recall"],
-    #     metrics["pr_auc"],
-    #     metrics["f1_score"],
-    #     metrics["f_beta_score"],
-    #     metrics["accuracy"],
-    #     metrics["confusion_matrix"],
-    #     ",".join(dropped_cols),
-    #     train_size,
-    #     threshold,
-    # )
-
-    # query = """INSERT INTO MODEL_RESULT
-    #         (Model_name, Params, Recall, Pr_auc, F1_score, F_beta_score, Accuracy, Confusion_matrix, Dropped_columns, Train_size, Threshold)
-    #         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
-
-    # cur.execute(query, values)
 
 
 def drop_no_stroke_patients(trainset, number_of_patients, seed):
@@ -167,6 +143,16 @@ def drop_no_stroke_patients(trainset, number_of_patients, seed):
     no_stroke_sampled = no_stroke_df.sample(n=number_of_patients, random_state=seed)
 
     return pd.concat([no_stroke_sampled, stroke_df], axis=0)
+
+
+def set_seed(seed):
+    # https://docs.pytorch.org/docs/stable/notes/randomness.html
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
 
 
 def run_model(

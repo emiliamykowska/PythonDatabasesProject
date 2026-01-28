@@ -6,8 +6,6 @@ from tqdm import tqdm
 from torch.utils.data import Dataset
 import numpy as np
 import random
-import numpy as np
-import torch
 
 
 def set_seed(seed):

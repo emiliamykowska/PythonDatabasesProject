@@ -29,7 +29,7 @@ def connect_to_sql(user, password, database):
         mysql.connector.connection.MySQLConnection: A connection object used to run queries.
 
     Raises:
-        mysql.connector.Error: If the connection fails (wrong credentials, wrong database, or server not reachable).
+        mysql.connector.Error: If the connection fails.
     """
     cnx = mysql.connector.connect(
         host="127.0.0.1", port=3306, user=user, password=password, database=database

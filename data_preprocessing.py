@@ -5,11 +5,11 @@ from project_utils import (
     encode_data,
     scale_data,
     save_data_to_sql,
-    connect_with_sql,
+    connect_to_sql,
     load_data_from_sql,
 )
 
-cnx = connect_with_sql("project_adm", "sTroke123", "stroke_project")
+cnx = connect_to_sql("project_adm", "sTroke123", "stroke_project")
 cur = cnx.cursor()
 
 seed = 17
